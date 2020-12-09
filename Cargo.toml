@@ -6,6 +6,9 @@ edition = "2018"
 license = "GPLv3-or-later"
 readme = "README.md"
 repository = "https://github.com/chorman0773/cargo-native-install"
+description = """
+Installs cargo targets in a manner similar to make install or cmake --install
+"""
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
