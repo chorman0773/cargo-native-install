@@ -3,6 +3,9 @@ name = "cargo-native-install"
 version = "0.1.0"
 authors = ["Connor Horman <chorman64@gmail.com>"]
 edition = "2018"
+license = "GPLv3-or-later"
+readme = "README.md"
+repository = "https://github.com/chorman0773/cargo-native-install"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
