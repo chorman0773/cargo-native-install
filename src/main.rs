@@ -249,6 +249,10 @@ fn main(){
                         target.installed_path = Some((&*name).into());
                     }
 
+                    if let None = target.strip{
+                        target.strip = Some(true)
+                    }
+
 
                     if let Some(buf) = &mut target.installed_path{
                         match std::env::consts::EXE_EXTENSION{
@@ -303,6 +307,10 @@ fn main(){
                             };
                             if let None = target.mode{
                                 target.mode = Some("u=rw,g=r,o=r".to_string());
+                            }
+
+                            if let None = target.strip{
+                                target.strip = Some(crate_type=="cdylib");
                             }
 
                             if let None = target.prefix{
@@ -692,10 +700,12 @@ pub fn install_target(dirs: &InstallDirs,target: &Target,opts: &Options){
                 if let Some(s) = &opts.install{
                     let mut cmd = Command::new(s);
                     if let Some(s) = &opts.strip{
-                        let mut strip_arg = OsString::from("--strip-program=");
-                        strip_arg.push(s);
-                        cmd.arg("-s");
-                        cmd.arg(strip_arg);
+                        if let Some(true) = target.strip{
+                            let mut strip_arg = OsString::from("--strip-program=");
+                            strip_arg.push(s);
+                            cmd.arg("-s");
+                            cmd.arg(strip_arg);
+                        }
                     }
 
                     if !opts.no_create_dirs{

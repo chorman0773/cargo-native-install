@@ -1,6 +1,6 @@
 [package]
 name = "cargo-native-install"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Connor Horman <chorman64@gmail.com>"]
 edition = "2018"
 license = "GPL-3.0-or-later"
@@ -30,5 +30,5 @@ name = "cargo-native-install"
 [package.metadata.install-targets.man]
 type = "man"
 target-file = "cargo-native-install.1"
-
+installed-path = "1/cargo-native-install.1"
 

@@ -71,7 +71,9 @@ pub struct Target{
     #[serde(default)]
     pub installed_aliases: Option<Vec<PathBuf>>,
     #[serde(default)]
-    pub exclude: bool
+    pub exclude: bool,
+    #[serde(default)]
+    pub strip: Option<bool>
 }
 
 #[derive(Deserialize,Debug)]
