@@ -21,7 +21,6 @@ libc = "0.2.80"
 [[bin]]
 name = "cargo-native-install"
 
-[lib]
-crate-type = ["cdylib","staticlib"]
+[package.metadata.install-targets.cargo-native-install]
 
 
