@@ -164,8 +164,9 @@ pub fn parse( mut args: std::env::Args) -> Options{
             x if x.starts_with("--out-dir=") => opts.out_dir = x.get(10..).map(Into::into),
             "--debug" => opts.debug = true,
             "--release" => opts.debug = false,
+            "native-install" => {}
             x => {
-                eprintln!("Unrecongized option {}. ",x);
+                eprintln!("cargo-native-install: Unrecongized option {}. ",x);
                 std::process::exit(1);
             }
         }
