@@ -636,8 +636,8 @@ pub fn install_target(dirs: &InstallDirs,target: &Target,opts: &Options){
                             Ok(term) => {
                                 match term.code(){
                                     Some(0) | Some(20) => {},
-                                    Some(1) => {
-                                        eprintln!("  -- Failed (target returned exit code 1)");
+                                    Some(2) => {
+                                        eprintln!("  -- Failed (target returned exit code 2)");
                                     }
                                     Some(10) => {
                                         eprintln!("  -- Skipped")
