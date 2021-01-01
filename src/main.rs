@@ -76,13 +76,13 @@ pub fn parse(mut args: std::env::Args) -> Options {
         match &*arg {
             "--help" => {
                 println!("Usage: {} [options]...", &prg_name);
-                println!("Installs the current cargo project into native system directories (like GNU make install or cmake --install)");
+                println!("Installs the current cargo project into native system directories (like GNU make install or cmake --install)\n");
                 println!("Options:");
                 println!("\t--help: Prints this message, and exits");
                 println!("\t--version: Prints version information, and exits");
                 println!("\t--dry-run: Show the results of each install operation, but do not perform any operations");
                 println!(
-                    "\t--user-prefix: Default prefix to ~/.local, instead of a system-wide dir"
+                    "\t--user-prefix: Default prefix to ~/.local, instead of a system-wide dir. This overrides the `prefix` environment variable even if `--prefix` is not set."
                 );
                 println!("\t--prefix=<prefix>: Sets the prefix for installation operations");
                 println!("\t--bindir=<dir>: Use dir as the directory to install binary programs. Either an absolute path, or a path relative to prefix. (defaults to bin)");
@@ -105,7 +105,7 @@ pub fn parse(mut args: std::env::Args) -> Options {
                 println!("\t--strip=<prg>: Use <prg> to strip, instead of the default (strip)");
                 println!("\t--install=<prg>: Use <prg> to install programs, instead of the default (install)");
                 println!("\t--internal-install: Do not invoke any programs to install. Instead, copy files natively. This is the default if install is not found, and `--install` is not provided");
-                println!("\t--mode=<mode>: Force installed files to use <mode> in the form of a chmod mode (X is the executable bit if the file is a binary target, or a directory)");
+                println!("\t--mode=<mode>: Force installed files to use <mode> in the form of a chmod mode (X is the executable bit if the file is a binary target, or a directory). Only guaranteed to be effective on unix-like targets");
                 println!("\t--no-create: Do not create installed directories. Also do not create any prefix directories");
                 println!("\t--verbose: Print messages for each action");
                 println!(
@@ -124,6 +124,27 @@ pub fn parse(mut args: std::env::Args) -> Options {
                 println!("\t--out-dir=<dir>: Consider cargo targets to be stored in <dir> instead of <manifest-dir>/target");
                 println!("\t--release: Consider cargo targets to have been built in release mode (default)");
                 println!("\t--debug: Consider cargo targets to have been built in debug mode");
+                println!("");
+                println!("Environment:");
+                println!("prefix\n\t\tInstall directories may be specified as environment variables, as well as with options. If both the environment variable and the CLI option is present, the option takes precedence");
+                println!("exec_prefix\n\t\t Similar to prefix.");
+                println!("bindir\n\t\tSimilar to prefix.");
+                println!("libdir\n\t\tSimilar to prefix.");
+                println!("sbindir\n\t\tSimilar to prefix.");
+                println!("libexecdir\n\t\tSimilar to prefix.");
+                println!("includedir\n\t\tSimilar to prefix.");
+                println!("datarootdir\n\t\tSimilar to prefix.");
+                println!("datadir\n\t\tSimilar to prefix.");
+                println!("docdir\n\t\tSimilar to prefix.");
+                println!("mandir\n\t\tSimilar to prefix.");
+                println!("infodir\n\t\tSimilar to prefix.");
+                println!("localedir\n\t\tSimilar to prefix.");
+                println!("localstatedir\n\t\tSimilar to prefix.");
+                println!("sharedstatedir\n\t\tSimilar to prefix.");
+                println!("sysconfdir\n\t\tSimilar to prefix.");
+                println!("runstatedir\n\t\tIf specified, the variable is propagate to run targets, and to cargo. Has no further effect on the program");
+                println!("PATH\n\t\tSearches for install and strip in these paths");
+
                 std::process::exit(0)
             }
             "--version" => {
@@ -518,6 +539,66 @@ fn main() {
                 }
             }
 
+            let mut dirs = install_dirs::dirs::from_env();
+
+            if let Some(dir) = &opts.prefix {
+                dirs.prefix = dir.clone()
+            }
+
+            if let Some(dir) = &opts.exec_prefix {
+                dirs.prefix = dir.clone()
+            }
+
+            if let Some(dir) = &opts.bindir {
+                dirs.bin = dir.clone()
+            }
+
+            if let Some(dir) = &opts.libdir {
+                dirs.lib = dir.clone()
+            }
+            if let Some(dir) = &opts.sbindir {
+                dirs.sbin = dir.clone()
+            }
+            if let Some(dir) = &opts.libexecdir {
+                dirs.libexec = dir.clone()
+            }
+            if let Some(dir) = &opts.includedir {
+                dirs.include = dir.clone()
+            }
+
+            if let Some(dir) = &opts.datarootdir {
+                dirs.dataroot = dir.clone()
+            }
+            if let Some(dir) = &opts.datadir {
+                dirs.data = dir.clone()
+            }
+            if let Some(dir) = &opts.mandir {
+                dirs.man = dir.clone()
+            }
+            if let Some(dir) = &opts.docdir {
+                dirs.doc = dir.clone()
+            }
+            if let Some(dir) = &opts.infodir {
+                dirs.info = dir.clone()
+            }
+            if let Some(dir) = &opts.localedir {
+                dirs.locale = dir.clone()
+            }
+
+            if let Some(dir) = &opts.sharedstatedir {
+                dirs.sharedstate = dir.clone()
+            }
+            if let Some(dir) = &opts.localstatedir {
+                dirs.localstate = dir.clone()
+            }
+            let dirs = match dirs.canonicalize() {
+                Ok(x) => x,
+                Err(e) => {
+                    eprintln!("Failed to resolve installation prefix: {}", e);
+                    std::process::exit(1)
+                }
+            };
+
             if opts.build {
                 let mut cargo = std::process::Command::new("cargo");
                 cargo.arg("build");
@@ -534,68 +615,23 @@ fn main() {
                     cargo.arg("--release");
                 }
 
-                if let Some(prefix) = &opts.prefix {
-                    cargo.env("prefix", prefix);
-                }
-
-                if let Some(exec_prefix) = &opts.exec_prefix {
-                    cargo.env("exec_prefix", exec_prefix);
-                }
-
-                if let Some(dir) = &opts.bindir {
-                    cargo.env("bindir", dir);
-                }
-
-                if let Some(dir) = &opts.libdir {
-                    cargo.env("libdir", dir);
-                }
-
-                if let Some(dir) = &opts.sbindir {
-                    cargo.env("sbindir", dir);
-                }
-
-                if let Some(dir) = &opts.libexecdir {
-                    cargo.env("libexecdir", dir);
-                }
-
-                if let Some(dir) = &opts.includedir {
-                    cargo.env("includedir", dir);
-                }
-
-                if let Some(dir) = &opts.datarootdir {
-                    cargo.env("dataroot", dir);
-                }
-
-                if let Some(dir) = &opts.datadir {
-                    cargo.env("datadir", dir);
-                }
-                if let Some(dir) = &opts.mandir {
-                    cargo.env("mandir", dir);
-                }
-
-                if let Some(dir) = &opts.docdir {
-                    cargo.env("docdir", dir);
-                }
-
-                if let Some(dir) = &opts.infodir {
-                    cargo.env("infodir", dir);
-                }
-
-                if let Some(dir) = &opts.localedir {
-                    cargo.env("localedir", dir);
-                }
-
-                if let Some(dir) = &opts.localstatedir {
-                    cargo.env("localstatedir", dir);
-                }
-
-                if let Some(dir) = &opts.sharedstatedir {
-                    cargo.env("sharedstatedir", dir);
-                }
-
-                if let Some(dir) = &opts.sysconfdir {
-                    cargo.env("sysconfdir", dir);
-                }
+                cargo.env("prefix", &dirs.prefix);
+                cargo.env("exec_prefix", &dirs.exec_prefix);
+                cargo.env("bindir", &dirs.bin);
+                cargo.env("libdir", &dirs.lib);
+                cargo.env("sbindir", &dirs.sbin);
+                cargo.env("libexecdir", &dirs.libexec);
+                cargo.env("includedir", &dirs.include);
+                cargo.env("datarootdir", &dirs.dataroot);
+                cargo.env("datadir", &dirs.data);
+                cargo.env("docdir", &dirs.doc);
+                cargo.env("mandir", &dirs.man);
+                cargo.env("infodir", &dirs.info);
+                cargo.env("localedir", &dirs.locale);
+                cargo.env("localstatedir", &dirs.localstate);
+                cargo.env("sharedstatedir", &dirs.sharedstate);
+                cargo.env("sysconfdir", &dirs.sysconf);
+                cargo.env("runstatedir", &dirs.runstate);
 
                 match cargo.status() {
                     Ok(status) => {
@@ -612,66 +648,6 @@ fn main() {
             }
 
             if !opts.no_install {
-                let mut dirs = InstallDirs::defaults();
-
-                if let Some(dir) = &opts.prefix {
-                    dirs.prefix = dir.clone()
-                }
-
-                if let Some(dir) = &opts.exec_prefix {
-                    dirs.prefix = dir.clone()
-                }
-
-                if let Some(dir) = &opts.bindir {
-                    dirs.bin = dir.clone()
-                }
-
-                if let Some(dir) = &opts.libdir {
-                    dirs.lib = dir.clone()
-                }
-                if let Some(dir) = &opts.sbindir {
-                    dirs.sbin = dir.clone()
-                }
-                if let Some(dir) = &opts.libexecdir {
-                    dirs.libexec = dir.clone()
-                }
-                if let Some(dir) = &opts.includedir {
-                    dirs.include = dir.clone()
-                }
-
-                if let Some(dir) = &opts.datarootdir {
-                    dirs.dataroot = dir.clone()
-                }
-                if let Some(dir) = &opts.datadir {
-                    dirs.data = dir.clone()
-                }
-                if let Some(dir) = &opts.mandir {
-                    dirs.man = dir.clone()
-                }
-                if let Some(dir) = &opts.docdir {
-                    dirs.doc = dir.clone()
-                }
-                if let Some(dir) = &opts.infodir {
-                    dirs.info = dir.clone()
-                }
-                if let Some(dir) = &opts.localedir {
-                    dirs.locale = dir.clone()
-                }
-
-                if let Some(dir) = &opts.sharedstatedir {
-                    dirs.sharedstate = dir.clone()
-                }
-                if let Some(dir) = &opts.localstatedir {
-                    dirs.localstate = dir.clone()
-                }
-                let dirs = match dirs.canonicalize() {
-                    Ok(x) => x,
-                    Err(e) => {
-                        eprintln!("Failed to resolve installation prefix: {}", e);
-                        std::process::exit(1)
-                    }
-                };
-
                 if let Some(target) = &opts.install_target {
                     match targets.get(target) {
                         Some(target) => install_target(&dirs, target, &opts),
@@ -720,6 +696,7 @@ pub fn install_target(dirs: &InstallDirs, target: &Target, opts: &Options) {
                     cmd.env("sharedstaedir", &*dirs.sharedstate);
                     cmd.env("localstatedir", &*dirs.localstate);
                     cmd.env("sysconfdir", &*dirs.sysconf);
+                    cmd.env("runstatedir", &dirs.runstate);
                     if opts.verbose {
                         cmd.env("_VERBOSE", "1");
                     }

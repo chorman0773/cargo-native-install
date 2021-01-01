@@ -2,7 +2,7 @@
 # It is not intended for manual editing.
 [[package]]
 name = "cargo-native-install"
-version = "0.1.4"
+version = "0.2.0"
 dependencies = [
  "cargo_toml",
  "home",
