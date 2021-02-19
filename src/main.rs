@@ -809,6 +809,11 @@ pub fn install_target(dirs: &InstallDirs, target: &Target, opts: &Options) {
                         cmd.arg("-v");
                     }
 
+                    if let Some(mode) = &mode {
+                        cmd.arg("-m");
+                        cmd.arg(mode);
+                    }
+
                     if target.directory {
                         if let Some(s) = &target.target_file {
                             cmd.arg(s);
@@ -858,98 +863,15 @@ pub fn install_target(dirs: &InstallDirs, target: &Target, opts: &Options) {
                         }
                     }
 
-                    #[cfg(unix)]
-                    {
-                        let dest_permissions = std::fs::metadata(target_file.as_path())
-                            .unwrap()
-                            .permissions();
-                        if let Some(mode) = &mode {
-                            let umask = unsafe { libc::umask(0) };
-                            let mode = if mode.starts_with(|c: char| c.is_digit(8)) {
-                                u32::from_str_radix(&*mode, 8).unwrap() & !umask
-                            } else if mode.starts_with('=')
-                                && mode[1..].starts_with(|c: char| c.is_digit(8))
-                            {
-                                u32::from_str_radix(&mode[1..], 8).unwrap()
-                            } else if mode.starts_with('+')
-                                && mode[1..].starts_with(|c: char| c.is_digit(8))
-                            {
-                                u32::from_str_radix(&mode[1..], 8).unwrap()
-                                    | dest_permissions.mode()
-                            } else if mode.starts_with('-')
-                                && mode[1..].starts_with(|c: char| c.is_digit(8))
-                            {
-                                dest_permissions.mode()
-                                    & !u32::from_str_radix(&mode[1..], 8).unwrap()
-                            } else {
-                                let mut mode_bits = dest_permissions.mode();
-                                for s in mode.split(",") {
-                                    let mut chars = s.chars();
-                                    let mut type_mask = 0;
-                                    let mut cmode = 0;
-                                    let mut modifier = ' '; // Not valid
-                                    while let Some(c) = chars.next() {
-                                        if c == '=' || c == '+' || c == '-' {
-                                            modifier = c;
-                                            break;
-                                        }
-                                        match c {
-                                            'u' => type_mask |= 0o4700,
-                                            'g' => type_mask |= 0o2070,
-                                            'o' => type_mask |= 0o1007,
-                                            'a' => type_mask |= 0o7777,
-                                            _ => {
-                                                eprintln!("Invalid mode {}", mode);
-                                                std::process::exit(1)
-                                            }
-                                        }
-                                        if type_mask == 0 {
-                                            type_mask = 0o7777 & !umask;
-                                        }
-                                    }
-                                    for c in chars {
-                                        match c {
-                                            'r' => cmode |= 0o444,
-                                            'w' => cmode |= 0o222,
-                                            'x' => cmode |= 0o111,
-                                            'X' => {
-                                                cmode |= if mode_bits & 0o111 != 0
-                                                    || target.type_ == Some(TargetType::Bin)
-                                                    || target.directory
-                                                {
-                                                    0o111
-                                                } else {
-                                                    0
-                                                }
-                                            }
-                                            's' => cmode |= 0o6000,
-                                            't' => cmode |= 0o1000,
-                                            _ => {
-                                                eprintln!("Invalid mode {}", mode);
-                                                std::process::exit(1)
-                                            }
-                                        }
-                                    }
-
-                                    match modifier {
-                                        '=' => mode_bits = cmode & type_mask | mode_bits & 0o2000,
-                                        '+' => mode_bits |= cmode & type_mask,
-                                        '-' => mode_bits &= !(cmode & type_mask),
-                                        _ => {
-                                            eprintln!("Invalid mode {}", mode);
-                                            std::process::exit(1)
-                                        }
-                                    }
-                                }
-                                mode_bits
-                            };
-                            std::fs::set_permissions(
-                                target_file.as_path(),
-                                Permissions::from_mode(mode),
-                            )
-                            .unwrap();
-                        }
-                    }
+                    // if let Some(mode) = &mode {
+                    //     set_permissions(
+                    //         &target_file,
+                    //         mode,
+                    //         target.type_ == Some(TargetType::Bin)
+                    //             || target.type_ == Some(TargetType::SBin)
+                    //             || target.directory,
+                    //     )
+                    // }
                 } else {
                     match do_internal_install(
                         target.target_file.as_deref(),
@@ -1158,6 +1080,86 @@ pub fn convert_to_path(input: &Path, dirs: &InstallDirs, primary: &Path) -> Path
     }
 }
 
+pub fn set_permissions<P1: AsRef<Path>>(
+    #[allow(unused_variables)] target: P1,
+    #[allow(unused_variables)] mode: &str,
+    #[allow(unused_variables)] exec: bool,
+) {
+    #[cfg(unix)]
+    {
+        let dest_permissions = std::fs::metadata(target.as_ref()).unwrap().permissions();
+        let umask = unsafe { libc::umask(0) };
+        let mode = if mode.starts_with(|c: char| c.is_digit(8)) {
+            u32::from_str_radix(&*mode, 8).unwrap() & !umask
+        } else if mode.starts_with('=') && mode[1..].starts_with(|c: char| c.is_digit(8)) {
+            u32::from_str_radix(&mode[1..], 8).unwrap()
+        } else if mode.starts_with('+') && mode[1..].starts_with(|c: char| c.is_digit(8)) {
+            u32::from_str_radix(&mode[1..], 8).unwrap() | dest_permissions.mode()
+        } else if mode.starts_with('-') && mode[1..].starts_with(|c: char| c.is_digit(8)) {
+            dest_permissions.mode() & !u32::from_str_radix(&mode[1..], 8).unwrap()
+        } else {
+            let mut mode_bits = dest_permissions.mode();
+            for s in mode.split(",") {
+                let mut chars = s.chars();
+                let mut type_mask = 0;
+                let mut cmode = 0;
+                let mut modifier = ' '; // Not valid
+                while let Some(c) = chars.next() {
+                    if c == '=' || c == '+' || c == '-' {
+                        modifier = c;
+                        break;
+                    }
+                    match c {
+                        'u' => type_mask |= 0o4700,
+                        'g' => type_mask |= 0o2070,
+                        'o' => type_mask |= 0o1007,
+                        'a' => type_mask |= 0o7777,
+                        _ => {
+                            eprintln!("Invalid mode {}", mode);
+                            std::process::exit(1)
+                        }
+                    }
+                    if type_mask == 0 {
+                        type_mask = 0o7777 & !umask;
+                    }
+                }
+                for c in chars {
+                    match c {
+                        'r' => cmode |= 0o444,
+                        'w' => cmode |= 0o222,
+                        'x' => cmode |= 0o111,
+                        'X' => {
+                            cmode |= if mode_bits & 0o111 != 0 || exec {
+                                0o111
+                            } else {
+                                0
+                            }
+                        }
+                        's' => cmode |= 0o6000,
+                        't' => cmode |= 0o1000,
+                        _ => {
+                            eprintln!("Invalid mode {}", mode);
+                            std::process::exit(1)
+                        }
+                    }
+                }
+
+                match modifier {
+                    '=' => mode_bits = (cmode & type_mask) | (mode_bits & 0o2000),
+                    '+' => mode_bits |= cmode & type_mask,
+                    '-' => mode_bits &= !(cmode & type_mask),
+                    _ => {
+                        eprintln!("Invalid mode {}", mode);
+                        std::process::exit(1)
+                    }
+                }
+            }
+            mode_bits
+        };
+        std::fs::set_permissions(target, Permissions::from_mode(mode)).unwrap();
+    }
+}
+
 pub fn create_alias<P1: AsRef<Path>, P2: AsRef<Path>>(
     src: P1,
     dest: P2,
@@ -1238,84 +1240,17 @@ pub fn do_internal_install<P1: AsRef<Path>, P2: AsRef<Path>>(
         } else {
             return Err(std::io::Error::new(ErrorKind::NotFound, InstallError));
         }
-        #[cfg(unix)]
-        {
-            let dest_permissions = metadata(dest.as_ref())?.permissions();
-            if let Some(mode) = &mode {
-                let umask = unsafe { libc::umask(0) };
-                let mode = if mode.starts_with(|c: char| c.is_digit(8)) {
-                    u32::from_str_radix(&*mode, 8).unwrap() & !umask
-                } else if mode.starts_with('=') && mode[1..].starts_with(|c: char| c.is_digit(8)) {
-                    u32::from_str_radix(&mode[1..], 8).unwrap()
-                } else if mode.starts_with('+') && mode[1..].starts_with(|c: char| c.is_digit(8)) {
-                    u32::from_str_radix(&mode[1..], 8).unwrap() | dest_permissions.mode()
-                } else if mode.starts_with('-') && mode[1..].starts_with(|c: char| c.is_digit(8)) {
-                    dest_permissions.mode() & !u32::from_str_radix(&mode[1..], 8).unwrap()
-                } else {
-                    let mut mode_bits = dest_permissions.mode();
-                    for s in mode.split(",") {
-                        let mut chars = s.chars();
-                        let mut type_mask = 0;
-                        let mut cmode = 0;
-                        let mut modifier = ' '; // Not valid
-                        while let Some(c) = chars.next() {
-                            if c == '=' || c == '+' || c == '-' {
-                                modifier = c;
-                                break;
-                            }
-                            match c {
-                                'u' => type_mask |= 0o4700,
-                                'g' => type_mask |= 0o2070,
-                                'o' => type_mask |= 0o1007,
-                                'a' => type_mask |= 0o7777,
-                                _ => {
-                                    eprintln!("Invalid mode {}", mode);
-                                    std::process::exit(1)
-                                }
-                            }
-                            if type_mask == 0 {
-                                type_mask = 0o7777 & !umask;
-                            }
-                        }
-                        for c in chars {
-                            match c {
-                                'r' => cmode |= 0o444,
-                                'w' => cmode |= 0o222,
-                                'x' => cmode |= 0o111,
-                                'X' => {
-                                    cmode |= if mode_bits & 0o111 != 0
-                                        || target.type_ == Some(TargetType::Bin)
-                                        || target.directory
-                                    {
-                                        0o111
-                                    } else {
-                                        0
-                                    }
-                                }
-                                's' => cmode |= 0o6000,
-                                't' => cmode |= 0o1000,
-                                _ => {
-                                    eprintln!("Invalid mode {}", mode);
-                                    std::process::exit(1)
-                                }
-                            }
-                        }
 
-                        match modifier {
-                            '=' => mode_bits = cmode & type_mask | mode_bits & 0o2000,
-                            '+' => mode_bits |= cmode & type_mask,
-                            '-' => mode_bits &= !(cmode & type_mask),
-                            _ => {
-                                eprintln!("Invalid mode {}", mode);
-                                std::process::exit(1)
-                            }
-                        }
-                    }
-                    mode_bits
-                };
-                std::fs::set_permissions(dest.as_ref(), Permissions::from_mode(mode))?;
-            }
+        if let Some(mode) = mode {
+            set_permissions(
+                &dest,
+                mode,
+                target.type_ == Some(TargetType::Bin)
+                    || target.type_ == Some(TargetType::SBin)
+                    || target.directory,
+            );
         }
+
         if !target.directory {
             if let Some(s) = &opts.strip {
                 let mut cmd = Command::new(s);
