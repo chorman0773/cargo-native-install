@@ -15,7 +15,8 @@ Semver Minor (including patches for `0.x`):
 * Any changes to the exposed Command Line Interface. 
 * Addition of a new key with a default to entries in the `install-targets` array.
 
-Semver Major (including minor versions `0.x`):
+
+Semver Major (including `0.x`):
 * A change in any specified behaviour defined under the "Format" section, other than those specified as reserved.
 
 ## Command Line Interface
@@ -61,13 +62,14 @@ Options:
 * --no-libexec: Install libexec targets to bin instead
 * --no-sbin: Install sbin targets to bin instead of sbin (note that this does not enable privileged binaries)
 * --arch-prefix[=target]: Install bin, lib, include, libexec, sbin targets to an an architecture specific prefix.
-* --build: Build the package before installing. An environment variable corresponding to each directory is set during the build
-* --build-only: Build the package without installing. Like --build, environment variables will be set with all the directories.
+* --build: Build the package before installing. An environment variable corresponding to each directory is set during the build. Use of `--build` and `--build-only` is deprecated in favor of `--config` and `config.toml`, and using build scripts for configuring build-time installation directories. 
+* --build-only: Build the package without installing. Like --build, environment variables will be set with all the directories. Use of `--build` and `--build-only` is deprecated in favor of `--config` and `config.toml`, and using build scripts for configuring build-time installation directories. 
 * --shared=lib: Treat cdylib targets as library targets by default and install to libdir. This is the default on unix-like targets
 * --shared=bin: Treat cdylib targets as binary targets by default and install to bindir. This is the default on windows
 * --out-dir=*dir*: Consider cargo targets to be stored in *dir* instead of *manifest-dir*/target
 * --release: Consider cargo targets to have been built in release mode *(default)
 * --debug: Consider cargo targets to have been built in debug mode
+* --config=*file*: If *file* exists, then read default installation directories from that path, rather than `config.toml`.
 
 Environment:
 * prefix: Install directories may be specified as environment variables, as well as with options. If both the environment variable and the CLI option is present, the option takes precedence
@@ -88,6 +90,15 @@ Environment:
 * sysconfdir: Similar to prefix.
 * runstatedir: If specified, the variable is propagate to run targets, and to cargo. Has no further effect on the program
 * PATH: Searches for install and strip in these paths
+
+### config.toml
+
+By default, `cargo-native-install` will look for a file name `config.toml` in the working directory. The name and path to the file can be configured by specifying the `--config` option, but the behaviour remains the same.
+If a file exists, it will be parsed (as toml), and install directories will be read from the `[dir]` object. Where the directories are present, these will override the default setting for that directory. Note that this will not affect directories specified by environment variables, or command line flags.
+
+This mechanism is intended to replace the `--build` and `--build-only` flags, which could be used to build the project with the directories specified in the environment. Using config.toml, the package would need to provide a build script that parses the file and sets the appropriate environment variables. 
+Because the file specifies the default directories, and can be overriden by individual options and environment variables, this can be used to set a "sysroot", where the project is built using a standard prefix, and then installed into a different path, which can then be used with chroot, or to a mount point on a different partition. 
+
 
 ## Format
 
@@ -120,25 +131,24 @@ If a key is specified, then it may have one of several fields, the defaults for 
     - For binary targets, this defaults to "=rwx".
     - For all library targets, this defaults to "=rw". 
 - `installed_path`: The path to the installed file. If it starts with the name of a install directory (like prefix, exec_prefix, or bindir), enclosed in either `<>`, `@@` or `${}` (as `<prefix>`, `@exec_prefix@`, or `${bindir}`), it will be replaced with that directory. Otherwise, if it's a relative path, it is resolved by the `install_dir`. By default, this is the name of the target file. 
-    - A path which starts with any ASCII identifier that ends in `dir` enclosed within `<>`, `@@`, or `${}` 
+    - A path which starts with any ASCII identifier that ends in `dir` enclosed within `<>`, `@@`, or `${}` which is not substituted as above is reserved. 
 - `target_file`: The file in the source directory, relative to `Cargo.toml`. By default, this is the file built for this target by cargo. Must exist for non-generated targets that do not have `directory` set.
-- `installed_aliases`: After installing the target, create a symbolic link to it with each of the given names.
+- `installed_aliases`: After installing the target, create a symbolic link to it with each of the given names. 
 - `exclude`: If set, disable this target. If set, all other options are ignored.
 
 For `run` targets, the `target_file` must be an executable program. It is executed with no parameters, and in the `install_dir` if explicitly specified (otherwise in the current directory). 
 An environment variable is set for each of the installation directories to the specified one, as absolute paths. 
-- Any environment variable that is an ascii identifier that ends in `dir` is reserved for future use. Such variables may be expected by `run` targets to be an absolute path name if defined, but make no further assumptions
-- The environment variables 
-Additionally, the verbose flag is passed into the program by setting the `verbose` environment variable to `1`. Note that no requirement is specified that this environment variable be respected, or even meaningful to the program. 
+- Any environment variable that is an ascii identifier that ends in `dir` is reserved for future use. Such variables may be expected by `run` targets to be an absolute path name if defined, but such targets may make no further assumptions about the existance or content of such environment variables
+Additionally, the verbose flag is passed into the program by setting the `_VERBOSE` environment variable to `1`. Note that no requirement is specified that this environment variable be respected, or even meaningful to the program. 
 
 All environment variables set for `run` targets are also set when invoking `cargo` for `cargo-native-install --build` and `--build-only`. 
 
 The meaning of exit codes from a run target are as follows:
 - `0`: successful execution, no report, continue installing
-- `2`: error execution, report error, continue installing (not fatal)
+- `1`: Error execution, report error, installation fails. 
+- `2`: Error execution, report error, continue installing (not fatal)
 - `10`: target skipped, report, continue installing
 - `20`: target skipped, no report, continue installing
-- `1`: Error execution, report error, installation fails. 
 - Any other code: Reserved for future versions. Error execution, report error, installation fails
     - Such codes may be assigned further meaning in future versions. `run` targets should not return such a code. 
 - If a run target is terminated by a signal, an error is reported, and installation fails. 

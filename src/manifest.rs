@@ -27,34 +27,34 @@ pub enum TargetType {
 impl TargetType {
     pub fn get_install_root<'a>(&self, dirs: &'a InstallDirs, opts: &Options) -> Option<&'a Path> {
         match self {
-            TargetType::Bin => Some(&*dirs.bin),
+            TargetType::Bin => Some(&*dirs.bindir),
             TargetType::SBin => {
                 if opts.no_sbin {
-                    Some(&*dirs.bin)
+                    Some(&*dirs.bindir)
                 } else {
-                    Some(&*dirs.sbin)
+                    Some(&*dirs.sbindir)
                 }
             }
-            TargetType::Library => Some(&*dirs.lib),
+            TargetType::Library => Some(&*dirs.libdir),
             TargetType::Shared => match opts.shared_targets_are_libraries {
-                Some(true) => Some(&*dirs.lib),
-                Some(false) => Some(&*dirs.bin),
-                None if std::env::consts::DLL_EXTENSION == "dll" => Some(&*dirs.bin),
-                None => Some(&*dirs.lib),
+                Some(true) => Some(&*dirs.libdir),
+                Some(false) => Some(&*dirs.bindir),
+                None if std::env::consts::DLL_EXTENSION == "dll" => Some(&*dirs.bindir),
+                None => Some(&*dirs.libdir),
             },
             TargetType::Libexec => {
                 if opts.no_libexec {
-                    Some(&*dirs.bin)
+                    Some(&*dirs.bindir)
                 } else {
-                    Some(&*dirs.libexec)
+                    Some(&*dirs.libexecdir)
                 }
             }
-            TargetType::Include => Some(&*dirs.include),
-            TargetType::Sysconfig => Some(&*dirs.sysconf),
-            TargetType::Data => Some(&*dirs.data),
-            TargetType::Doc => Some(&*dirs.doc),
-            TargetType::Man => Some(&*dirs.man),
-            TargetType::Info => Some(&*dirs.info),
+            TargetType::Include => Some(&*dirs.includedir),
+            TargetType::Sysconfig => Some(&*dirs.sysconfdir),
+            TargetType::Data => Some(&*dirs.datadir),
+            TargetType::Doc => Some(&*dirs.docdir),
+            TargetType::Man => Some(&*dirs.mandir),
+            TargetType::Info => Some(&*dirs.infodir),
             TargetType::Run => None,
         }
     }
@@ -92,4 +92,9 @@ pub struct Target {
 #[serde(rename_all = "kebab-case")]
 pub struct NativeInstallMetadata {
     pub install_targets: HashMap<String, Target>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct Config {
+    pub dirs: InstallDirs,
 }

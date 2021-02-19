@@ -1,6 +1,6 @@
 [package]
 name = "cargo-native-install"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Connor Horman <chorman64@gmail.com>"]
 edition = "2018"
 license = "GPL-3.0-or-later"
@@ -16,10 +16,10 @@ Installs cargo targets in a manner similar to make install or cmake --install
 which = "4.0.2"
 toml = "0.5.7"
 home = "0.5.3"
-install-dirs = "0.1.0"
+install-dirs = {version="0.2.1",features=["serde"]}
 cargo_toml = "0.8.1"
-serde = {version="1.0.117",features=["derive"]}
-serde_derive = "1.0.117"
+serde = {version="1.0",features=["derive"]}
+serde_derive = "1.0"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2.80"

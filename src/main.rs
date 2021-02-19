@@ -4,7 +4,7 @@ use std::{
     ffi::{CStr, OsStr, OsString},
     fmt::Display,
     fs::{self, metadata, Permissions},
-    io::ErrorKind,
+    io::{ErrorKind, Read},
     path::{Component, Path, PathBuf},
     process::{Command, Stdio},
 };
@@ -56,6 +56,7 @@ pub struct Options {
     pub shared_targets_are_libraries: Option<bool>,
     pub out_dir: Option<PathBuf>,
     pub debug: bool,
+    pub config: Option<PathBuf>,
 }
 
 const VERSION: &str = std::env!("CARGO_PKG_VERSION");
@@ -117,13 +118,14 @@ pub fn parse(mut args: std::env::Args) -> Options {
                 println!("\t--no-libexec: Install libexec targets to bin instead");
                 println!("\t--no-sbin: Install privileged binaries to bin instead of sbin (note that this does not enable privileged binaries)");
                 println!("\t--arch-prefix[=target]: Install bin, lib, include, libexec, sbin targets to an an architecture specific prefix.");
-                println!("\t--build: Build the package before installing. An environment variable corresponding to each directory is set during the build");
-                println!("\t--build-only: Build the package without installing. Like --build, environment variables will be set with all the directories.");
+                println!("\t--build: Build the package before installing. An environment variable corresponding to each directory is set during the build. This option is deprecated");
+                println!("\t--build-only: Build the package without installing. Like --build, environment variables will be set with all the directories. This option is deprecated");
                 println!("\t--shared=lib: Treat cdylib targets as library targets by default and install to libdir. This is the default on unix-like targets");
                 println!("\t--shared=bin: Treat cdylib targets as binary targets by default and install to bindir. This is the default on windows");
                 println!("\t--out-dir=<dir>: Consider cargo targets to be stored in <dir> instead of <manifest-dir>/target");
                 println!("\t--release: Consider cargo targets to have been built in release mode (default)");
                 println!("\t--debug: Consider cargo targets to have been built in debug mode");
+                println!("\t--config=<file>: Parse user configuration from the specified file if it exists, rather than config.toml");
                 println!("");
                 println!("Environment:");
                 println!("prefix\n\t\tInstall directories may be specified as environment variables, as well as with options. If both the environment variable and the CLI option is present, the option takes precedence");
@@ -209,6 +211,7 @@ pub fn parse(mut args: std::env::Args) -> Options {
             x if x.starts_with("--out-dir=") => opts.out_dir = x.get(10..).map(Into::into),
             "--debug" => opts.debug = true,
             "--release" => opts.debug = false,
+            x if x.starts_with("--config=") => opts.config = x.get(10..).map(Into::into),
             "native-install" => {}
             x => {
                 eprintln!("cargo-native-install: Unrecongized option {}. ", x);
@@ -539,7 +542,41 @@ fn main() {
                 }
             }
 
-            let mut dirs = install_dirs::dirs::from_env();
+            let mut dirs;
+
+            let cfg = opts
+                .config
+                .as_deref()
+                .unwrap_or_else(|| Path::new("config.toml"));
+
+            if let Ok(mut f) = std::fs::File::open(cfg) {
+                let mut str = String::new();
+                if let Err(e) = f.read_to_string(&mut str) {
+                    eprintln!(
+                        "Failed to read config file {}: {}",
+                        cfg.as_os_str().to_str().unwrap_or("Non UTF-8"),
+                        e
+                    );
+                    std::process::exit(1);
+                }
+                let config: manifest::Config = match toml::from_str(&str) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        eprintln!(
+                            "Failed to read config file {}: {}",
+                            cfg.as_os_str().to_str().unwrap_or("Non UTF-8"),
+                            e
+                        );
+                        std::process::exit(1)
+                    }
+                };
+
+                dirs = config.dirs;
+            } else {
+                dirs = InstallDirs::defaults();
+            }
+
+            dirs.read_env();
 
             if let Some(dir) = &opts.prefix {
                 dirs.prefix = dir.clone()
@@ -550,46 +587,46 @@ fn main() {
             }
 
             if let Some(dir) = &opts.bindir {
-                dirs.bin = dir.clone()
+                dirs.bindir = dir.clone()
             }
 
             if let Some(dir) = &opts.libdir {
-                dirs.lib = dir.clone()
+                dirs.libdir = dir.clone()
             }
             if let Some(dir) = &opts.sbindir {
-                dirs.sbin = dir.clone()
+                dirs.sbindir = dir.clone()
             }
             if let Some(dir) = &opts.libexecdir {
-                dirs.libexec = dir.clone()
+                dirs.libexecdir = dir.clone()
             }
             if let Some(dir) = &opts.includedir {
-                dirs.include = dir.clone()
+                dirs.includedir = dir.clone()
             }
 
             if let Some(dir) = &opts.datarootdir {
-                dirs.dataroot = dir.clone()
+                dirs.datarootdir = dir.clone()
             }
             if let Some(dir) = &opts.datadir {
-                dirs.data = dir.clone()
+                dirs.datadir = dir.clone()
             }
             if let Some(dir) = &opts.mandir {
-                dirs.man = dir.clone()
+                dirs.mandir = dir.clone()
             }
             if let Some(dir) = &opts.docdir {
-                dirs.doc = dir.clone()
+                dirs.docdir = dir.clone()
             }
             if let Some(dir) = &opts.infodir {
-                dirs.info = dir.clone()
+                dirs.infodir = dir.clone()
             }
             if let Some(dir) = &opts.localedir {
-                dirs.locale = dir.clone()
+                dirs.localedir = dir.clone()
             }
 
             if let Some(dir) = &opts.sharedstatedir {
-                dirs.sharedstate = dir.clone()
+                dirs.sharedstatedir = dir.clone()
             }
             if let Some(dir) = &opts.localstatedir {
-                dirs.localstate = dir.clone()
+                dirs.localstatedir = dir.clone()
             }
             let dirs = match dirs.canonicalize() {
                 Ok(x) => x,
@@ -615,23 +652,7 @@ fn main() {
                     cargo.arg("--release");
                 }
 
-                cargo.env("prefix", &dirs.prefix);
-                cargo.env("exec_prefix", &dirs.exec_prefix);
-                cargo.env("bindir", &dirs.bin);
-                cargo.env("libdir", &dirs.lib);
-                cargo.env("sbindir", &dirs.sbin);
-                cargo.env("libexecdir", &dirs.libexec);
-                cargo.env("includedir", &dirs.include);
-                cargo.env("datarootdir", &dirs.dataroot);
-                cargo.env("datadir", &dirs.data);
-                cargo.env("docdir", &dirs.doc);
-                cargo.env("mandir", &dirs.man);
-                cargo.env("infodir", &dirs.info);
-                cargo.env("localedir", &dirs.locale);
-                cargo.env("localstatedir", &dirs.localstate);
-                cargo.env("sharedstatedir", &dirs.sharedstate);
-                cargo.env("sysconfdir", &dirs.sysconf);
-                cargo.env("runstatedir", &dirs.runstate);
+                cargo.envs(dirs.as_env());
 
                 match cargo.status() {
                     Ok(status) => {
@@ -680,23 +701,7 @@ pub fn install_target(dirs: &InstallDirs, target: &Target, opts: &Options) {
                 );
                 if !opts.dry_run {
                     let mut cmd = Command::new(file);
-                    cmd.env("prefix", &*dirs.prefix);
-                    cmd.env("exec_prefix", &*dirs.exec_prefix);
-                    cmd.env("bindir", &*dirs.bin);
-                    cmd.env("libdir", &*dirs.lib);
-                    cmd.env("sbindir", &*dirs.sbin);
-                    cmd.env("libexecdir", &*dirs.libexec);
-                    cmd.env("includedir", &*dirs.include);
-                    cmd.env("datarootdir", &*dirs.dataroot);
-                    cmd.env("datadir", &*dirs.data);
-                    cmd.env("mandir", &*dirs.man);
-                    cmd.env("docdir", &*dirs.doc);
-                    cmd.env("infodir", &*dirs.info);
-                    cmd.env("localedir", &*dirs.locale);
-                    cmd.env("sharedstaedir", &*dirs.sharedstate);
-                    cmd.env("localstatedir", &*dirs.localstate);
-                    cmd.env("sysconfdir", &*dirs.sysconf);
-                    cmd.env("runstatedir", &dirs.runstate);
+                    cmd.envs(dirs.as_env());
                     if opts.verbose {
                         cmd.env("_VERBOSE", "1");
                     }
@@ -907,14 +912,17 @@ pub fn convert_to_path(input: &Path, dirs: &InstallDirs, primary: &Path) -> Path
                     || s == OsStr::new("@bindir@")
                     || s == OsStr::new("${bindir}") =>
             {
-                dirs.bin.components().chain(components).collect::<PathBuf>()
+                dirs.bindir
+                    .components()
+                    .chain(components)
+                    .collect::<PathBuf>()
             }
             Some(Component::Normal(s))
                 if s == OsStr::new("<sbindir>")
                     || s == OsStr::new("@sbindir@")
                     || s == OsStr::new("${sbindir}") =>
             {
-                dirs.sbin
+                dirs.sbindir
                     .components()
                     .chain(components)
                     .collect::<PathBuf>()
@@ -924,14 +932,17 @@ pub fn convert_to_path(input: &Path, dirs: &InstallDirs, primary: &Path) -> Path
                     || s == OsStr::new("@libdir@")
                     || s == OsStr::new("${libdir}") =>
             {
-                dirs.lib.components().chain(components).collect::<PathBuf>()
+                dirs.libdir
+                    .components()
+                    .chain(components)
+                    .collect::<PathBuf>()
             }
             Some(Component::Normal(s))
                 if s == OsStr::new("<libexecdir>")
                     || s == OsStr::new("@libexecdir@")
                     || s == OsStr::new("${libexecdir}") =>
             {
-                dirs.libexec
+                dirs.libexecdir
                     .components()
                     .chain(components)
                     .collect::<PathBuf>()
@@ -941,7 +952,7 @@ pub fn convert_to_path(input: &Path, dirs: &InstallDirs, primary: &Path) -> Path
                     || s == OsStr::new("@includedir@")
                     || s == OsStr::new("${includedir}") =>
             {
-                dirs.include
+                dirs.includedir
                     .components()
                     .chain(components)
                     .collect::<PathBuf>()
@@ -951,7 +962,7 @@ pub fn convert_to_path(input: &Path, dirs: &InstallDirs, primary: &Path) -> Path
                     || s == OsStr::new("@datarootdir@")
                     || s == OsStr::new("${datarootdir}") =>
             {
-                dirs.dataroot
+                dirs.datarootdir
                     .components()
                     .chain(components)
                     .collect::<PathBuf>()
@@ -961,7 +972,7 @@ pub fn convert_to_path(input: &Path, dirs: &InstallDirs, primary: &Path) -> Path
                     || s == OsStr::new("@datadir@")
                     || s == OsStr::new("${datadir}") =>
             {
-                dirs.data
+                dirs.datadir
                     .components()
                     .chain(components)
                     .collect::<PathBuf>()
@@ -971,14 +982,17 @@ pub fn convert_to_path(input: &Path, dirs: &InstallDirs, primary: &Path) -> Path
                     || s == OsStr::new("@mandir@")
                     || s == OsStr::new("${mandir}") =>
             {
-                dirs.man.components().chain(components).collect::<PathBuf>()
+                dirs.mandir
+                    .components()
+                    .chain(components)
+                    .collect::<PathBuf>()
             }
             Some(Component::Normal(s))
                 if s == OsStr::new("<infodir>")
                     || s == OsStr::new("@infodir@")
                     || s == OsStr::new("${infodir}") =>
             {
-                dirs.info
+                dirs.infodir
                     .components()
                     .chain(components)
                     .collect::<PathBuf>()
@@ -988,14 +1002,17 @@ pub fn convert_to_path(input: &Path, dirs: &InstallDirs, primary: &Path) -> Path
                     || s == OsStr::new("@docdir@")
                     || s == OsStr::new("${datarootdir}") =>
             {
-                dirs.doc.components().chain(components).collect::<PathBuf>()
+                dirs.docdir
+                    .components()
+                    .chain(components)
+                    .collect::<PathBuf>()
             }
             Some(Component::Normal(s))
                 if s == OsStr::new("<localedir>")
                     || s == OsStr::new("@localedir@")
                     || s == OsStr::new("${localedir}") =>
             {
-                dirs.locale
+                dirs.localedir
                     .components()
                     .chain(components)
                     .collect::<PathBuf>()
@@ -1005,7 +1022,7 @@ pub fn convert_to_path(input: &Path, dirs: &InstallDirs, primary: &Path) -> Path
                     || s == OsStr::new("@localstatedir@")
                     || s == OsStr::new("${localstatedir}") =>
             {
-                dirs.localstate
+                dirs.localstatedir
                     .components()
                     .chain(components)
                     .collect::<PathBuf>()
@@ -1015,7 +1032,7 @@ pub fn convert_to_path(input: &Path, dirs: &InstallDirs, primary: &Path) -> Path
                     || s == OsStr::new("@sharedstatedir@")
                     || s == OsStr::new("${sharedstatedir}") =>
             {
-                dirs.sharedstate
+                dirs.sharedstatedir
                     .components()
                     .chain(components)
                     .collect::<PathBuf>()
@@ -1025,7 +1042,7 @@ pub fn convert_to_path(input: &Path, dirs: &InstallDirs, primary: &Path) -> Path
                     || s == OsStr::new("@sysconfdir@")
                     || s == OsStr::new("${sysconfdir}") =>
             {
-                dirs.sysconf
+                dirs.sysconfdir
                     .components()
                     .chain(components)
                     .collect::<PathBuf>()
