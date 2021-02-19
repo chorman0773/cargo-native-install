@@ -778,6 +778,18 @@ pub fn install_target(dirs: &InstallDirs, target: &Target, opts: &Options) {
                 return;
             }
             if !opts.dry_run {
+                let mut mode = None;
+                if let Some(s) = &target.mode {
+                    mode = Some(s.clone());
+                }
+                if let Some(m) = &opts.mode {
+                    if let Some(mode) = &mut mode {
+                        *mode += ",";
+                        *mode += m;
+                    } else {
+                        mode = Some(m.clone());
+                    }
+                }
                 if let Some(s) = &opts.install {
                     let mut cmd = Command::new(s);
                     if let Some(s) = &opts.strip {
@@ -797,7 +809,7 @@ pub fn install_target(dirs: &InstallDirs, target: &Target, opts: &Options) {
                         cmd.arg("-v");
                     }
 
-                    if let Some(m) = &opts.mode {
+                    if let Some(m) = &mode {
                         cmd.arg("-m");
                         cmd.arg(m);
                     }
@@ -856,6 +868,7 @@ pub fn install_target(dirs: &InstallDirs, target: &Target, opts: &Options) {
                         target_file,
                         opts,
                         target,
+                        &mode,
                     ) {
                         Ok(()) => return,
                         Err(e) => {
@@ -1101,6 +1114,7 @@ pub fn do_internal_install<P1: AsRef<Path>, P2: AsRef<Path>>(
     dest: P2,
     opts: &Options,
     target: &Target,
+    mode: &Option<String>,
 ) -> std::io::Result<()> {
     if !opts.dry_run {
         if !opts.force {
@@ -1128,7 +1142,7 @@ pub fn do_internal_install<P1: AsRef<Path>, P2: AsRef<Path>>(
                     let name = buf.file_name().unwrap();
                     let mut dest_item = dest.as_ref().to_path_buf();
                     dest_item.push(name);
-                    do_internal_install(Some(buf), dest_item, opts, target)?;
+                    do_internal_install(Some(buf), dest_item, opts, target, mode)?;
                 }
             }
         } else if let Some(src) = src {
@@ -1139,7 +1153,7 @@ pub fn do_internal_install<P1: AsRef<Path>, P2: AsRef<Path>>(
         #[cfg(unix)]
         {
             let dest_permissions = metadata(dest.as_ref())?.permissions();
-            if let Some(mode) = &opts.mode {
+            if let Some(mode) = &mode {
                 let umask = unsafe { libc::umask(0) };
                 let mode = if mode.starts_with(|c: char| c.is_digit(8)) {
                     u32::from_str_radix(&*mode, 8).unwrap() & !umask
