@@ -692,6 +692,11 @@ fn main() {
 }
 
 pub fn install_target(dirs: &InstallDirs, target: &Target, opts: &Options) {
+    let install_dir = target
+        .install_dir
+        .as_deref()
+        .map(|path| convert_to_path(path, dirs, Path::new("")));
+
     match target.type_ {
         Some(TargetType::Run) => match &target.target_file {
             Some(file) => {
@@ -705,7 +710,7 @@ pub fn install_target(dirs: &InstallDirs, target: &Target, opts: &Options) {
                     if opts.verbose {
                         cmd.env("_VERBOSE", "1");
                     }
-                    if let Some(dir) = &target.install_dir {
+                    if let Some(dir) = &install_dir {
                         cmd.current_dir(dir);
                     }
 
@@ -744,7 +749,7 @@ pub fn install_target(dirs: &InstallDirs, target: &Target, opts: &Options) {
             let target_file = convert_to_path(
                 target.installed_path.as_deref().unwrap(),
                 dirs,
-                target.install_dir.as_deref().unwrap_or(dir),
+                install_dir.as_deref().unwrap_or(dir),
             );
             if target.privileged {
                 match opts.install_privileged {
